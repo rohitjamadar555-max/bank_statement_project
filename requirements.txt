@@ -1,0 +1,5 @@
+pandas>=2.0
+openpyxl
+pdfplumber
+pytesseract
+pillow
