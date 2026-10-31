@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; worker-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Bank Statement Analyzer - Browser Edition</title>
+  <link rel="stylesheet" href="styles.css">
+<script src="vendor/xlsx.full.min.js" defer></script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+  <main class="page-shell">
+    <header class="hero">
+      <p class="eyebrow">BROWSER EDITION - CSV + EXCEL + PDF SUPPORT</p>
+      <h1>Bank Statement Analyzer</h1>
+      <p class="intro">Review and summarize a CSV, Excel, or selectable-text PDF statement directly in this browser.</p>
+    </header>
+
+    <section class="privacy-card" aria-labelledby="privacy-title">
+      <div class="privacy-icon" aria-hidden="true">ðŸ”’</div>
+
+        <h2 id="privacy-title">Processed in this browser tab</h2>
+        <p>This app processes selected CSV, Excel, and selectable-text PDF files locally in your browser. It does not send statement contents to a server. Its spreadsheet and PDF readers are included with this website; it has no account, database, analytics, or external OCR connection.</p>
+        <p class="privacy-detail">When hosted online, the website host still receives ordinary page requests, such as your IP address. This app does not include statement contents in those requests. Browser extensions or device software with access to page content may still be able to read what is displayed.</p>
+      </div>
+    </section>
+
+    <section class="workspace" aria-labelledby="upload-title">
+      <div class="section-heading">
+        <div>
+          <p class="step-label">STEP 1</p>
+          <h2 id="upload-title">Choose a statement</h2>
+        </div>
+        <span class="format-pill">.CSV Â· .XLSX Â· .XLS Â· .PDF</span>
+      </div>
+      <p class="support-copy">This browser edition reads CSV, Excel (.xlsx, .xls), and selectable-text PDF files up to 10 MB. You can map columns manually. Scanned PDF and image support are not included yet.</p>
+
+      <label class="file-picker" for="statement-file">
+      <span class="upload-symbol" aria-hidden="true">&#8593;</span>
+        <span><strong>Select a CSV, Excel, or PDF file</strong><small id="file-status">The file is opened locally in this tab.</small></span>
+        <input id="statement-file" type="file" accept=".csv,.xlsx,.xls,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+      </label>
+
+      <div id="mapping-panel" class="mapping-panel" hidden>
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="step-label">STEP 2</p>
+            <h2>Check the columns</h2>
+          </div>
+        </div>
+        <p class="support-copy">We try to recognize common headings. Confirm the matches before analyzing; choose columns yourself if needed.</p>
+        <label class="map-field worksheet-field" id="worksheet-field" hidden>Worksheet
+          <select id="worksheet-select"></select>
+        </label>
+        <div class="mapping-grid">
+          <label class="map-field">Header row
+            <select id="header-row"></select>
+          </label>
+          <label class="map-field">Date <span class="required-mark">required</span>
+            <select id="map-date"></select>
+          </label>
+          <label class="map-field">Description <span class="required-mark">required</span>
+            <select id="map-description"></select>
+          </label>
+          <label class="map-field">Amount <span class="optional-mark">signed amount</span>
+            <select id="map-amount"></select>
+          </label>
+          <label class="map-field">Debit <span class="optional-mark">use with Credit</span>
+            <select id="map-debit"></select>
+          </label>
+          <label class="map-field">Credit <span class="optional-mark">use with Debit</span>
+            <select id="map-credit"></select>
+          </label>
+          <label class="map-field">Transaction type <span class="optional-mark">optional</span>
+            <select id="map-type"></select>
+          </label>
+          <label class="map-field">Date order
+            <select id="date-order">
+              <option value="DMY">Day / month / year (common in India)</option>
+              <option value="MDY">Month / day / year</option>
+            </select>
+          </label>
+        </div>
+        <p id="mapping-status" class="mapping-status" role="status"></p>
+        <div class="button-row">
+          <button id="analyze-button" class="button primary" type="button" disabled>Analyze in this browser</button>
+          <button id="clear-button" class="button secondary" type="button">Clear file and results</button>
+        </div>
+      </div>
+
+      <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <section id="results-panel" class="results-panel" aria-labelledby="results-title" hidden>
+      <div class="section-heading results-heading">
+        <div>
+          <p class="step-label">STEP 3</p>
+          <h2 id="results-title">Review the results</h2>
+        </div>
+      </div>
+      <p class="review-reminder">Check dates, descriptions, and amounts against your statement before relying on these summaries. Category labels are simple keyword suggestions.</p>
+      <div id="summary-cards" class="summary-grid"></div>
+
+      <div class="result-card">
+        <h3>Spending by category</h3>
+        <div class="table-wrap"><table><thead><tr><th>Category</th><th>Spending</th></tr></thead><tbody id="category-rows"></tbody></table></div>
+      </div>
+
+      <div id="issues-card" class="result-card" hidden>
+        <h3>Rows that need attention</h3>
+        <p id="issues-copy" class="support-copy"></p>
+        <div class="table-wrap"><table><thead><tr><th>CSV row</th><th>Issue</th></tr></thead><tbody id="issue-rows"></tbody></table></div>
+      </div>
+
+      <div id="duplicates-card" class="result-card" hidden>
+        <h3>Possible duplicate rows</h3>
+        <p class="support-copy">These are only suggestions. Two genuine transactions can look alike; nothing is removed automatically.</p>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th></tr></thead><tbody id="duplicate-rows"></tbody></table></div>
+      </div>
+
+      <div class="result-card">
+        <h3>Transactions</h3>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th></tr></thead><tbody id="transaction-rows"></tbody></table></div>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <p>Use the clear button when finished. It removes the app's current working data and visible results; browsers do not provide a guaranteed forensic wipe of memory.</p>
+      <p>Do not rely on extracted values without checking them against the original statement.</p>
+    </footer>
+  </main>
+</body>
+</html>

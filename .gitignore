@@ -3,3 +3,15 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# Keep real statement files out of Git. Store them outside this repository when possible.
+/private_statements/
+/user_uploads/
+/data/private_statements/
+/data/user_uploads/
+browser_app/index.html.before-encoding-fix
+analysis/recurring.txt
+analysis/recurring_.txt
+streamlit_app_.txt
+
+.streamlit/
