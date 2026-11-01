@@ -20,6 +20,7 @@ from normalizer import (
 from readers.csv_reader import read_csv_raw
 from readers.detector import detect_format
 from readers.excel_reader import read_excel_raw
+from readers.ocr_reader import read_image_raw
 from readers.pdf_reader import read_pdf_raw
 
 
@@ -32,13 +33,18 @@ def read_statement(filepath):
         return read_excel_raw(filepath)
     if file_format == "pdf":
         return read_pdf_raw(filepath)
+    if file_format == "image":
+        return read_image_raw(filepath, allow_picker=False)
 
     raise ValueError(f"Unsupported file format: {file_format}")
 
 
 st.set_page_config(page_title="Bank Statement Analyzer", page_icon="💳")
 st.title("💳 Bank Statement Analyzer")
-st.write("Upload a fictional CSV, Excel, or text-based PDF statement.")
+st.write(
+    "Upload a CSV, Excel, PDF, or statement image. Scanned PDFs and images "
+    "need Tesseract OCR installed."
+)
 
 st.warning(
     "Demo only: use fictional or anonymized statements. "
@@ -47,7 +53,12 @@ st.warning(
 
 uploaded_file = st.file_uploader(
     "Choose a statement",
-    type=["csv", "xlsx", "xls", "pdf"],
+    type=["csv", "xlsx", "xls", "pdf", "jpg", "jpeg", "png"],
+)
+
+st.caption(
+    "OCR can misread dates or amounts. Review every result carefully. "
+    "If available, a CSV or Excel export is usually easier to read."
 )
 
 if uploaded_file is not None:
@@ -98,9 +109,9 @@ if uploaded_file is not None:
             st.dataframe(duplicates)
 
         recurring = find_recurring(categorized)
-        st.subheader("Repeated scheduled expenses")
+        st.subheader("Recurring transactions")
         if recurring.empty:
-            st.info("No likely recurring expenses found.")
+            st.info("No recurring transactions detected yet.")
         else:
             st.dataframe(recurring)
 

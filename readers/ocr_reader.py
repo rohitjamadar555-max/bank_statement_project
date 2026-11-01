@@ -32,6 +32,7 @@ AMOUNT_PATTERN = (
 LINE_PATTERN = re.compile(
     rf"^\s*(?P<date>{DATE_PATTERN})"
     rf"\s+(?P<description>.+?)"
+    rf"(?:\s+(?P<transaction_type>debit|credit|dr\.?|cr\.?|withdrawal|deposit|payment|received))?"
     rf"\s+(?P<amount>{AMOUNT_PATTERN})\s*$",
     re.IGNORECASE,
 )
@@ -126,7 +127,7 @@ def _remember_tesseract_path(path):
             continue
 
 
-def find_tesseract():
+def find_tesseract(allow_picker: bool = True):
     """
     Find Tesseract automatically. If needed, ask the user to choose it once.
     """
@@ -141,7 +142,16 @@ def find_tesseract():
             _CACHED_TESSERACT_PATH = working_path
             return working_path
 
-    # Nothing was found automatically. Ask the user to locate the program.
+    # A desktop picker is useful for the command-line prototype, but it would
+    # block a web-app request. Web callers should receive setup instructions.
+    if not allow_picker:
+        raise RuntimeError(
+            "Tesseract OCR was not found. Install Tesseract OCR and add it to "
+            "PATH, or set the TESSERACT_CMD environment variable to the full "
+            "path of its program. Then restart the app."
+        )
+
+    # Nothing was found automatically. Ask the desktop user to locate it.
     try:
         from tkinter import Tk, filedialog
 
@@ -182,29 +192,59 @@ def find_tesseract():
     return working_path
 
 
-def read_image_raw(filepath: str) -> pd.DataFrame:
-    """
-    OCR a simple statement image.
+def parse_statement_text(text: str) -> pd.DataFrame:
+    """Read rows with a date, description, and amount together on one line."""
+    rows = []
 
-    Each transaction must have its date, description, and amount on one line.
-    Returns raw columns named Date, Description, and Amount.
-    """
-    tesseract_path = find_tesseract()
+    for line in text.splitlines():
+        match = LINE_PATTERN.match(line.strip())
+        if not match:
+            continue
+
+        amount = match.group("amount").strip()
+        # The normalizer handles currency signs; remove the optional "Rs.".
+        amount = re.sub(r"\bRs\.?\s*", "", amount, flags=re.IGNORECASE)
+
+        rows.append({
+            "Date": match.group("date").strip(),
+            "Description": match.group("description").strip(),
+            "Type": _normalize_transaction_type(match.group("transaction_type")),
+            "Amount": amount,
+        })
+
+    return pd.DataFrame(rows, columns=["Date", "Description", "Type", "Amount"])
+
+
+def _normalize_transaction_type(value: str | None) -> str | None:
+    """Normalize common OCR transaction direction labels for signed amounts."""
+    if not value:
+        return None
+    normalized = value.casefold().rstrip(".")
+    if normalized in {"debit", "dr", "withdrawal", "payment"}:
+        return "Debit"
+    if normalized in {"credit", "cr", "deposit", "received"}:
+        return "Credit"
+    return None
+
+
+def read_image_object(
+    source_image: Image.Image,
+    allow_picker: bool = True,
+) -> pd.DataFrame:
+    """OCR an already-open image and return simple transaction rows."""
+    tesseract_path = find_tesseract(allow_picker=allow_picker)
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
-
     language = os.environ.get("TESSERACT_LANG", "eng")
 
     try:
-        with Image.open(filepath) as source_image:
-            image = ImageOps.exif_transpose(source_image).convert("RGB")
-            image = ImageOps.grayscale(image)
-            image = ImageEnhance.Contrast(image).enhance(1.5)
-
-            text = pytesseract.image_to_string(
-                image,
-                lang=language,
-                config="--psm 6",
-            )
+        image = ImageOps.exif_transpose(source_image).convert("RGB")
+        image = ImageOps.grayscale(image)
+        image = ImageEnhance.Contrast(image).enhance(1.5)
+        text = pytesseract.image_to_string(
+            image,
+            lang=language,
+            config="--psm 6",
+        )
 
     except TesseractNotFoundError as error:
         raise RuntimeError(
@@ -219,36 +259,26 @@ def read_image_raw(filepath: str) -> pd.DataFrame:
             f"Details: {error}"
         ) from error
 
+    result = parse_statement_text(text)
+    if result.empty:
+        raise ValueError(
+            "OCR ran, but it could not recognize any transaction rows. "
+            "This reader currently expects each transaction's date, "
+            "description, and amount on one line. Try a CSV/Excel export "
+            "if your bank provides one."
+        )
+
+    return result
+
+
+def read_image_raw(filepath: str, allow_picker: bool = True) -> pd.DataFrame:
+    """OCR a statement image file."""
+    try:
+        with Image.open(filepath) as source_image:
+            image_copy = source_image.copy()
     except (OSError, ValueError) as error:
         raise ValueError(
             f"Could not open image file '{filepath}': {error}"
         ) from error
 
-    rows = []
-
-    for line in text.splitlines():
-        match = LINE_PATTERN.match(line.strip())
-        if not match:
-            continue
-
-        amount = match.group("amount").strip()
-
-        # The normalizer handles currency signs such as ₹ and parentheses.
-        # Remove "Rs." here because the project's amount parser may not know it.
-        amount = re.sub(r"\bRs\.?\s*", "", amount, flags=re.IGNORECASE)
-
-        rows.append({
-            "Date": match.group("date").strip(),
-            "Description": match.group("description").strip(),
-            "Amount": amount,
-        })
-
-    if not rows:
-        raise ValueError(
-            "OCR ran, but it could not recognize any transaction rows. "
-            "This reader expects each row to show a date, description, and "
-            "amount together on one line. Some bank layouts may need a "
-            "custom reader."
-        )
-
-    return pd.DataFrame(rows, columns=["Date", "Description", "Amount"])
+    return read_image_object(image_copy, allow_picker=allow_picker)

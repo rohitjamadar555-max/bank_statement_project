@@ -1,5 +1,6 @@
 pandas>=2.0
 openpyxl
+xlrd>=2.0.1
 pdfplumber
 pytesseract
 pillow

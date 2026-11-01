@@ -4,6 +4,7 @@ BANK_CONFIGS = {
             "Date": "date",
             "Description": "description",
             "Amount": "amount",
+            "Type": "transaction_type",
             "Payment_Mode": "payment_mode",
             "Balance": "balance",
         },
